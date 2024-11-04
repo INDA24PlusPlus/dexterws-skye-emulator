@@ -1,3 +1,3 @@
 pub mod cpu;
-mod opcodes;
+mod parser;
 mod tests;

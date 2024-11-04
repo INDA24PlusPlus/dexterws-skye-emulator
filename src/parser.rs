@@ -329,7 +329,7 @@ fn get_oc_type(op_code:u16)->OpCodeType{
     }
     panic!("");
 }
-pub fn parse_oc(op_code:String)->OpCode{
+fn parse_oc(op_code:String)->OpCode{
     if !check_op_code(&op_code){
         panic!("Invalid op code {}, hexadecimal token of length 4\n", op_code);
     }
@@ -359,7 +359,6 @@ pub fn parse_oc(op_code:String)->OpCode{
     println!("{:#x}",oc_val);
     return OpCode { oc_type: get_oc_type(oc_val), oc_id:get_oc_id(oc_val), op_code: oc_val };
 }
-
 pub fn parse_file(fp:String)->Vec<OpCode>{
     let contents=fs::read_to_string(fp).expect("Error");
     let code_lines=contents.lines();

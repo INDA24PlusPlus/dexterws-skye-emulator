@@ -1,14 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::opcodes::*;
+    use crate::parser::*;
 
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    
-    #[test]
-    fn test_line() {
-        let oc:OpCode=parse_oc("0FFF".to_owned());
-        assert_eq!((oc.op_code,oc.oc_type,oc.oc_id),(0x0FFF,OpCodeType::CALL(1),OpCodeIdentity::CallMach));
-    }
     #[test]
     fn test_text() {
         let ocs:Vec<OpCode>=parse_text("0FFF\n0222\nF355\n8AB3".to_owned());
