@@ -1,0 +1,16 @@
+pub enum OpCodeType{
+    CALL,
+    DISPLAY,
+    FLOW,
+    COND,
+    CONST,
+    ASSIG,
+    BITOP,
+    MATH,
+    MEM,
+    RAND,
+    KEYOP,
+    TIMER,
+    SOUND,
+    BCD,
+}
