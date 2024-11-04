@@ -1,63 +1,64 @@
 use core::panic;
 use std::{fs, vec};
-
+///Type of operation that code represents
 #[derive( Debug, PartialEq, Eq )]
 pub enum OpCodeType{
-    CALL(u8),
-    DISPLAY(u8),
-    FLOW(u8),
-    COND(u8),
-    CONST(u8),
-    ASSIG(u8),
-    BITOP(u8),
-    MATH(u8),
-    MEM(u8),
-    RAND(u8),
-    KEYOP(u8),
-    TIMER(u8),
-    SOUND(u8),
-    BCD(u8),
+    CALL(u8),       //Responsible for calling machine code functions
+    DISPLAY(u8),    //Manages the display
+    FLOW(u8),       //Manages flow through jumps and line skips
+    COND(u8),       //Evaluates conditional statements
+    CONST(u8),      //Constant values
+    ASSIG(u8),      //Register assignment
+    BITOP(u8),      //Bit operations
+    MATH(u8),       //Arithmetic
+    MEM(u8),        //Memory management
+    RAND(u8),       //PRNG
+    KEYOP(u8),      //User Input
+    TIMER(u8),      //Delay program
+    SOUND(u8),      //Play sound
+    BCD(u8),        //Fancy BCD things
 }
 
+///Specific op code identity
 #[derive( Debug, PartialEq, Eq )]
 pub enum OpCodeIdentity{
-    CallMach,
-    ClrDisp,
-    RetSub,
-    JumpAddr,
-    CallSub,
-    SkipEqRC,
-    SkipNqRC,
-    SkipEqRR,
-    SetRC,
-    AddNcRC,
-    SetRR,
-    OrRR,
-    AndRR,
-    XorRR,
-    AddRR,
-    SubRRR,
-    RshiftR,
-    SubLRR,
-    LshiftR,
-    SkipNqRR,
-    SetAddrRegC,
-    JumpAddrCR,
-    RandRC,
-    DrawDispRRC,
-    SkipKeyPressedR,
-    SkipNKeyPressedR,
-    GetDelayR,
-    AwaitGetKeyDownR,
-    SetDelayR,
-    SetSoundR,
-    AddAddrRegR,
-    SetAddrRegSpriteR,
-    SetBcdR,
-    DumpRegsToMemR,
-    LoadRegsFromMemR,
+    CallMach,           //Call machine code routines
+    ClrDisp,            //Clear display
+    RetSub,             //Return from subroutine
+    JumpAddr,           //Jump to addr
+    CallSub,            //Call subroutine
+    SkipEqRC,           //Skip if reg equal to const
+    SkipNqRC,           //Skip if reg not equal to const
+    SkipEqRR,           //Skip if reg equal to reg
+    SetRC,              //Store const to reg
+    AddNcRC,            //Add const to reg no carry flag
+    SetRR,              //Set reg to reg
+    OrRR,               //Bw or between regs
+    AndRR,              //Bw and between regs
+    XorRR,              //Bw xor between regs
+    AddRR,              //Add reg to reg
+    SubRRR,             //Sub reg from reg
+    RshiftR,            //Rshift reg by 1
+    SubLRR,             //Sub reg from reg but other order
+    LshiftR,            //Lshift reg by 1
+    SkipNqRR,           //Skip if reg not equal reg
+    SetAddrRegC,        //Set addr reg to const
+    JumpAddrCR,         //Jump to const + offset
+    RandRC,             //PRNG
+    DrawDispRRC,        //Draw sprite to disp
+    SkipKeyPressedR,    //Skip if key stored in reg is pressed
+    SkipNKeyPressedR,   //Skip if key stored in reg isn't pressed
+    GetDelayR,          //Get value in delay timer
+    AwaitGetKeyDownR,   //Wait for key then store in reg
+    SetDelayR,          //Set delay timer to reg
+    SetSoundR,          //Set sound timer to reg
+    AddAddrRegR,        //Add reg to addr reg
+    SetAddrRegSpriteR,  //Set addr reg to sprite for char in reg
+    SetBcdR,            //BCD things
+    DumpRegsToMemR,     //Dump V0-Reg to mem at addr const
+    LoadRegsFromMemR,   //Load V0-reg from mem from addr const
 }
-
+///Holds an op code and metadata for it
 #[derive( Debug, PartialEq, Eq )]
 pub struct OpCode {
     pub oc_type:OpCodeType,
