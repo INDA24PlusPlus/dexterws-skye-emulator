@@ -1,4 +1,4 @@
-use crate::{fastrand::Rand, opcodes::{Data, OpCode, OpCodeType}};
+use crate::{fastrand::Rand, parser::{DataType, OpCode, OpCodeIdentity, OpCodeType}};
 
 pub struct Stack {
     head: u8,
@@ -34,6 +34,34 @@ impl Stack {
     }
 }
 
+struct Display {
+    data: [u8; 64 * 32],
+}
+
+impl Default for Display {
+    fn default() -> Self {
+        Self {
+            data: [0; 64 * 32],
+        }
+    }
+}
+
+impl Display {
+    fn clear(&mut self) {
+        self.data = [0; 64 * 32];
+    }
+
+    fn draw(&self) {
+        print!("\x1B[1;1H");
+        for y in 0..32 {
+            for x in 0..64 {
+                print!("{}", if self.data[x + y * 64] == 1 { "#" } else { " " });
+            }
+            println!();
+        }
+    }
+}
+
 pub struct Chip8 {
     pc: u16,
     registers_8bit: [u8; 16],
@@ -41,6 +69,7 @@ pub struct Chip8 {
     memory: [u8; 4096],
     stack: Stack,
     rand_engine: Rand,
+    display: Display,
     program: Vec<OpCode>,
 }
 
@@ -54,6 +83,7 @@ impl Default for Chip8 {
             stack: Default::default(),
             program: Vec::new(),
             rand_engine: Default::default(),
+            display: Default::default(),
         }
     }
 }
@@ -74,192 +104,193 @@ impl Chip8 {
         *self.program.get(self.pc as usize).unwrap()
     }
 
-    fn execute(&mut self) {
+    fn execute_op(&mut self) {
         let oc = self.get_opcode();
         let data = oc.get_data();
         self.inc_pc();
-        match oc.oc_type {
-            OpCodeType::CALL(_) => unimplemented!(),
-            // Clear the display
-            OpCodeType::DISPLAY(0) => {
-                print!("{}[2J", 27 as char);
+        match oc.oc_id {
+            OpCodeIdentity::CallMach => unimplemented!(),
+            OpCodeIdentity::ClrDisp => {
+                self.display.clear();
             }
-            // Return from subroutine
-            OpCodeType::FLOW(0) => {
-                let pc = self.stack.pop().unwrap();
-                self.pc = pc;
+            OpCodeIdentity::RetSub => {
+                self.pc = self.stack.pop().unwrap();
             }
-            // Jump to addr
-            OpCodeType::FLOW(1) => {
-                if let Data::NNN(addr) = data {
-                    self.pc = addr;
+            OpCodeIdentity::JumpAddr => {
+                if let DataType::NNN { address } = data {
+                    self.pc = address;
                 }
             }
-            // Jump to subroutine
-            OpCodeType::FLOW(2) => {
-                self.stack.push(self.pc).unwrap();
-                if let Data::NNN(addr) = data {
-                    self.pc = addr;
+            OpCodeIdentity::CallSub => {
+                if let DataType::NNN { address } = data {
+                    self.stack.push(self.pc);
+                    self.pc = address;
                 }
             }
-            // Jump to V0 + addr
-            OpCodeType::FLOW(4) => {
-                if let Data::NNN(addr) = data {
-                    let v0 = self.registers_8bit[0] as u16;
-                    self.pc = v0 + addr;
-                }
-            }
-            OpCodeType::FLOW(_) => todo!(),
-            // VX == NN
-            OpCodeType::COND(0) => {
-                if let Data::XNN(x, nn) = data {
-                    if self.registers_8bit[x as usize] == nn {
+            OpCodeIdentity::SkipEqRC => {
+                if let DataType::XNN { x, constant } = data {
+                    if self.registers_8bit[x as usize] == constant {
                         self.inc_pc();
                     }
                 }
             }
-            // VX != NN
-            OpCodeType::COND(1) => {
-                if let Data::XNN(x, nn) = data {
-                    if self.registers_8bit[x as usize] != nn {
+            OpCodeIdentity::SkipNqRC => {
+                if let DataType::XNN { x, constant } = data {
+                    if self.registers_8bit[x as usize] != constant {
                         self.inc_pc();
                     }
                 }
             }
-            // VX == VY
-            OpCodeType::COND(2) => {
-                if let Data::XY(x, y) = data {
+            OpCodeIdentity::SkipEqRR => {
+                if let DataType::XY { x, y } = data {
                     if self.registers_8bit[x as usize] == self.registers_8bit[y as usize] {
                         self.inc_pc();
                     }
                 }
             }
-            // VX != VY
-            OpCodeType::COND(4) => {
-                if let Data::XY(x, y) = data {
+            OpCodeIdentity::SetRC => {
+                if let DataType::XNN { x, constant } = data {
+                    self.registers_8bit[x as usize] = constant;
+                }
+            }
+            OpCodeIdentity::AddNcRC => {
+                if let DataType::XNN { x, constant } = data {
+                    self.registers_8bit[x as usize] += constant;
+                }
+            }
+            OpCodeIdentity::SetRR => {
+                if let DataType::XY { x, y } = data {
+                    self.registers_8bit[x as usize] = self.registers_8bit[y as usize];
+                }
+            }
+            OpCodeIdentity::OrRR => {
+                if let DataType::XY { x, y } = data {
+                    self.registers_8bit[x as usize] |= self.registers_8bit[y as usize];
+                }
+            }
+            OpCodeIdentity::AndRR => {
+                if let DataType::XY { x, y } = data {
+                    self.registers_8bit[x as usize] &= self.registers_8bit[y as usize];
+                }
+            }
+            OpCodeIdentity::XorRR => {
+                if let DataType::XY { x, y } = data {
+                    self.registers_8bit[x as usize] ^= self.registers_8bit[y as usize];
+                }
+            }
+            OpCodeIdentity::AddRR => {
+                if let DataType::XY { x, y } = data {
+                    let (result, overflow) = self.registers_8bit[x as usize].overflowing_add(self.registers_8bit[y as usize]);
+                    self.registers_8bit[x as usize] = result;
+                    self.registers_8bit[0xF] = overflow as u8;
+                }
+            }
+            OpCodeIdentity::SubRRR => {
+                if let DataType::XY { x, y } = data {
+                    let (result, overflow) = self.registers_8bit[x as usize].overflowing_sub(self.registers_8bit[y as usize]);
+                    self.registers_8bit[x as usize] = result;
+                    self.registers_8bit[0xF] = !overflow as u8;
+                }
+            }
+            OpCodeIdentity::RshiftR => {
+                if let DataType::X { x } = data {
+                    self.registers_8bit[0xF] = self.registers_8bit[x as usize] & 0x1;
+                    self.registers_8bit[x as usize] >>= 1;
+                }
+            }
+            OpCodeIdentity::SubLRR => {
+                if let DataType::XY { x, y } = data {
+                    let (result, overflow) = self.registers_8bit[y as usize].overflowing_sub(self.registers_8bit[x as usize]);
+                    self.registers_8bit[x as usize] = result;
+                    self.registers_8bit[0xF] = !overflow as u8;
+                }
+            }
+            OpCodeIdentity::LshiftR => {
+                if let DataType::X { x } = data {
+                    self.registers_8bit[0xF] = self.registers_8bit[x as usize] >> 7;
+                    self.registers_8bit[x as usize] <<= 1;
+                }
+            }
+            OpCodeIdentity::SkipNqRR => {
+                if let DataType::XY { x, y } = data {
                     if self.registers_8bit[x as usize] != self.registers_8bit[y as usize] {
                         self.inc_pc();
                     }
                 }
             }
-            OpCodeType::COND(_) => todo!(),
-            // VX = NN
-            OpCodeType::CONST(0) => {
-                if let Data::XNN(x, nn) = data {
-                    self.registers_8bit[x as usize] = nn;
+            OpCodeIdentity::SetAddrRegC => {
+                if let DataType::NNN { address } = data {
+                    self.register_12bit = address;
                 }
             }
-            // VX += NN
-            OpCodeType::CONST(1) => {
-                if let Data::XNN(x, nn) = data {
-                    self.registers_8bit[x as usize] += nn;
+            OpCodeIdentity::JumpAddrCR => {
+                if let DataType::NNN { address } = data {
+                    self.pc = self.registers_8bit[0] as u16 + address;
                 }
             }
-            OpCodeType::CONST(_) => todo!(),
-            // VX = VY
-            OpCodeType::ASSIG(_) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] = self.registers_8bit[y as usize];
+            OpCodeIdentity::RandRC => {
+                if let DataType::XNN { x, constant } = data {
+                    self.registers_8bit[x as usize] = self.rand_engine.rand() as u8 & constant;
                 }
             }
-            // VX = VX | VY
-            OpCodeType::BITOP(0) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] |= self.registers_8bit[y as usize];
+            OpCodeIdentity::DrawDispRRC => {
+                if let DataType::XYN { x, y, constant: height } = data {
+                    let x = self.registers_8bit[x as usize] as usize;
+                    let y = self.registers_8bit[y as usize] as usize;
+                    let height = height as usize;
+                    let mut collision = false;
+                    for yline in 0..height {
+                        let pixel = self.memory[(self.register_12bit + yline as u16) as usize];
+                        for xline in 0..8 {
+                            if (pixel & (0x80 >> xline)) != 0 {
+                                let x = (x + xline) % 64;
+                                let y = (y + yline) % 32;
+                                if self.display.data[x + y * 64] == 1 {
+                                    collision = true;
+                                }
+                                self.display.data[x + y * 64] ^= 1;
+                            }
+                        }
+                    }
+                    self.registers_8bit[0xF] = collision as u8;
                 }
             }
-            // VX = VX & VY
-            OpCodeType::BITOP(1) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] &= self.registers_8bit[y as usize];
+            OpCodeIdentity::SkipKeyPressedR => todo!(),
+            OpCodeIdentity::SkipNKeyPressedR => todo!(),
+            OpCodeIdentity::GetDelayR => todo!(),
+            OpCodeIdentity::AwaitGetKeyDownR => todo!(),
+            OpCodeIdentity::SetDelayR => todo!(),
+            OpCodeIdentity::SetSoundR => todo!(),
+            OpCodeIdentity::AddAddrRegR => todo!(),
+            OpCodeIdentity::SetAddrRegSpriteR => todo!(),
+            OpCodeIdentity::SetBcdR => {
+                if let DataType::X { x } = data {
+                    let x = self.registers_8bit[x as usize];
+                    self.memory[self.register_12bit as usize] = x / 100;
+                    self.memory[(self.register_12bit + 1) as usize] = (x / 10) % 10;
+                    self.memory[(self.register_12bit + 2) as usize] = x % 10;
                 }
             }
-            // VX = VX ^ VY
-            OpCodeType::BITOP(2) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] ^= self.registers_8bit[y as usize];
-                }
-            }
-            // VX >>= VY
-            OpCodeType::BITOP(4) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] >>= self.registers_8bit[y as usize];
-                }
-            }
-            // VX <<= VY
-            OpCodeType::BITOP(8) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] <<= self.registers_8bit[y as usize];
-                }
-            }
-            OpCodeType::BITOP(_) => todo!(),
-            // VX += VY
-            OpCodeType::MATH(0) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] += self.registers_8bit[y as usize];
-                }
-            }
-            // VX -= VY
-            OpCodeType::MATH(1) => {
-                if let Data::XY(x, y) = data {
-                    self.registers_8bit[x as usize] -= self.registers_8bit[y as usize];
-                }
-            }
-            // VX = VY - VX
-            OpCodeType::MATH(2) => {
-                if let Data::XY(x, y) = data {
-                    let vx = self.registers_8bit[x as usize];
-                    let vy = self.registers_8bit[y as usize];
-                    self.registers_8bit[x as usize] = vy - vx;
-                }
-            }
-            OpCodeType::MATH(_) => todo!(),
-            // I = NNN
-            OpCodeType::MEM(0) => {
-                if let Data::NNN(addr) = data {
-                    self.register_12bit = addr;
-                }
-            }
-            // I += VX
-            OpCodeType::MEM(1) => {
-                if let Data::X(x) = data {
-                    self.register_12bit += self.registers_8bit[x as usize] as u16;
-                }
-            }
-            // I = sprite[VX]
-            OpCodeType::MEM(2) => {
-                todo!()
-            }
-            // REGDUMP
-            OpCodeType::MEM(4) => {
-                if let Data::X(x) = data {
-                    let reg_i = self.register_12bit as usize;
-                    for i in 0..=x as usize {
-                        self.memory[reg_i + i] = self.registers_8bit[i];
+            OpCodeIdentity::DumpRegsToMemR => {
+                if let DataType::X { x } = data {
+                    for i in 0..=x {
+                        self.memory[(self.register_12bit + i as u16) as usize] = self.registers_8bit[i as usize];
                     }
                 }
             }
-            // REGLOAD
-            OpCodeType::MEM(8) => {
-                if let Data::X(x) = data {
-                    let reg_i = self.register_12bit as usize;
-                    for i in 0..=x as usize {
-                        self.registers_8bit[i] = self.memory[reg_i + i];
+            OpCodeIdentity::LoadRegsFromMemR => {
+                if let DataType::X { x } = data {
+                    for i in 0..=x {
+                        self.registers_8bit[i as usize] = self.memory[(self.register_12bit + i as u16) as usize];
                     }
                 }
             }
-            OpCodeType::MEM(_) => todo!(),
-            OpCodeType::RAND(_) => {
-                if let Data::XNN(x, nn) = data {
-                    let rand = self.rand_engine.rand() as u8;
-                    self.registers_8bit[x as usize] = rand & nn;
-                }
-            }
-            OpCodeType::KEYOP(_) => todo!(),
-            OpCodeType::TIMER(_) => todo!(),
-            OpCodeType::SOUND(_) => todo!(),
-            OpCodeType::BCD(_) => todo!(),
-            _ => todo!(),
+        }
+    }
+    pub fn run(&mut self) {
+        loop {
+            self.execute_op();
+            self.display.draw();
         }
     }
 }
