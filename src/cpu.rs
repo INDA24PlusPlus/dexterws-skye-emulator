@@ -1,8 +1,9 @@
-use crate::{fastrand::Rand, parser::{DataType, OpCode, OpCodeIdentity, OpCodeType}};
+use crate::{display::{HEIGHT, WIDTH}, fastrand::Rand, parser::{DataType, OpCode, OpCodeIdentity, OpCodeType}};
 
+#[derive(Debug, Clone, Copy)]
 pub struct Stack {
-    head: u8,
-    data: [u16; 48],
+    pub(crate) head: u8,
+    pub(crate) data: [u16; 48],
 }
 
 impl Default for Stack {
@@ -34,33 +35,32 @@ impl Stack {
     }
 }
 
-struct Display {
+struct VRAM {
     data: [u8; 64 * 32],
 }
 
-impl Default for Display {
+impl Default for VRAM {
     fn default() -> Self {
         Self {
-            data: [0; 64 * 32],
+            data: [0; WIDTH as usize * HEIGHT as usize],
         }
     }
 }
 
-impl Display {
+impl VRAM {
     fn clear(&mut self) {
         self.data = [0; 64 * 32];
     }
 
-    fn draw(&self) {
-        print!("\x1B[1;1H");
-        for y in 0..32 {
-            for x in 0..64 {
-                print!("{}", if self.data[x + y * 64] == 1 { "#" } else { " " });
-            }
-            println!();
+    fn flip(&mut self, x: usize, y: usize) -> bool {
+        if x >= 64 || y >= 32 {
+            return false;
         }
+        self.data[x + y * 64] ^= 1;
+        return self.data[x + y * 64] == 0;
     }
 }
+
 
 pub struct Chip8 {
     pc: u16,
@@ -69,8 +69,11 @@ pub struct Chip8 {
     memory: [u8; 4096],
     stack: Stack,
     rand_engine: Rand,
-    display: Display,
+    vram: VRAM,
+    vram_changed: bool,
     program: Vec<OpCode>,
+    timer: u8,
+    sound_timer: u8,
 }
 
 impl Default for Chip8 {
@@ -83,10 +86,19 @@ impl Default for Chip8 {
             stack: Default::default(),
             program: Vec::new(),
             rand_engine: Default::default(),
-            display: Default::default(),
+            vram: VRAM::default(),
+            vram_changed: false,
+            timer: 0,
+            sound_timer: 0,
         }
     }
 }
+
+pub enum CPUError {
+    StackOverflow,
+}
+
+
 
 impl Chip8 {
     pub fn new(program: Vec<OpCode>) -> Self {
@@ -100,18 +112,18 @@ impl Chip8 {
         self.pc += 1;
     }
 
-    fn get_opcode(&mut self) -> OpCode {
-        *self.program.get(self.pc as usize).unwrap()
+    fn get_opcode(&mut self) -> Option<OpCode> {
+        self.program.get(self.pc as usize).map(|x| *x)
     }
 
-    fn execute_op(&mut self) {
-        let oc = self.get_opcode();
+    fn execute_op(&mut self, oc: OpCode) -> Result<(), CPUError> {
         let data = oc.get_data();
         self.inc_pc();
         match oc.oc_id {
             OpCodeIdentity::CallMach => unimplemented!(),
             OpCodeIdentity::ClrDisp => {
-                self.display.clear();
+                self.vram.clear();
+                self.vram_changed = true;
             }
             OpCodeIdentity::RetSub => {
                 self.pc = self.stack.pop().unwrap();
@@ -123,8 +135,11 @@ impl Chip8 {
             }
             OpCodeIdentity::CallSub => {
                 if let DataType::NNN { address } = data {
-                    self.stack.push(self.pc);
-                    self.pc = address;
+                    if let Some(()) = self.stack.push(self.pc) {
+                        self.pc = address;
+                    } else {
+                        return Err(CPUError::StackOverflow);
+                    }
                 }
             }
             OpCodeIdentity::SkipEqRC => {
@@ -243,25 +258,37 @@ impl Chip8 {
                         let pixel = self.memory[(self.register_12bit + yline as u16) as usize];
                         for xline in 0..8 {
                             if (pixel & (0x80 >> xline)) != 0 {
-                                let x = (x + xline) % 64;
-                                let y = (y + yline) % 32;
-                                if self.display.data[x + y * 64] == 1 {
-                                    collision = true;
-                                }
-                                self.display.data[x + y * 64] ^= 1;
+                                collision = self.vram.flip(x + xline, y + yline);
                             }
                         }
                     }
                     self.registers_8bit[0xF] = collision as u8;
                 }
+                self.vram_changed = true;
             }
-            OpCodeIdentity::SkipKeyPressedR => todo!(),
-            OpCodeIdentity::SkipNKeyPressedR => todo!(),
-            OpCodeIdentity::GetDelayR => todo!(),
-            OpCodeIdentity::AwaitGetKeyDownR => todo!(),
-            OpCodeIdentity::SetDelayR => todo!(),
-            OpCodeIdentity::SetSoundR => todo!(),
-            OpCodeIdentity::AddAddrRegR => todo!(),
+            OpCodeIdentity::SkipKeyPressedR => unimplemented!(),
+            OpCodeIdentity::SkipNKeyPressedR => unimplemented!(),
+            OpCodeIdentity::GetDelayR => {
+                if let DataType::X { x } = data {
+                    self.registers_8bit[x as usize] = self.timer;
+                }
+            }
+            OpCodeIdentity::AwaitGetKeyDownR => unimplemented!(),
+            OpCodeIdentity::SetDelayR => {
+                if let DataType::X { x } = data {
+                    self.timer = self.registers_8bit[x as usize];
+                }
+            }
+            OpCodeIdentity::SetSoundR => {
+                if let DataType::X { x } = data {
+                    self.sound_timer = self.registers_8bit[x as usize];
+                }
+            }
+            OpCodeIdentity::AddAddrRegR => {
+                if let DataType::X { x } = data {
+                    self.register_12bit += self.registers_8bit[x as usize] as u16;
+                }
+            }
             OpCodeIdentity::SetAddrRegSpriteR => todo!(),
             OpCodeIdentity::SetBcdR => {
                 if let DataType::X { x } = data {
@@ -286,12 +313,39 @@ impl Chip8 {
                 }
             }
         }
+        Ok(())
     }
-    pub fn run(&mut self) {
-        loop {
-            self.execute_op();
-            self.display.draw();
+
+    pub fn dump_registers(&self) -> [u8; 16] {
+        self.registers_8bit
+    }
+
+    pub fn dump_large_register(&self) -> u16 {
+        self.register_12bit
+    }
+
+    pub fn dump_stack(&self) -> Stack {
+        self.stack
+    }
+
+    pub fn dump_clock(&self) -> (u8, u8) {
+        (self.timer, self.sound_timer)
+    }
+
+    pub fn cycle(&mut self) -> Option<(Option<&[u8]>, bool)> {
+        self.vram_changed = false;
+        let oc = self.get_opcode()?;
+        let res = self.execute_op(oc);
+        match res {
+            Ok(_) => (),
+            Err(_) => panic!("CPU ERROR"),
         }
+        self.timer = self.timer.saturating_sub(1);
+        self.sound_timer = self.sound_timer.saturating_sub(1);
+        if self.vram_changed {
+            return Some((Some(&self.vram.data), self.sound_timer > 0));
+        }
+        Some((None, self.sound_timer > 0))
     }
 }
 
