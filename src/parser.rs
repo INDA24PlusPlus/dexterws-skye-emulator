@@ -1,7 +1,7 @@
 use core::panic;
 use std::{fs, vec};
 ///Type of operation that code represents
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub enum OpCodeType{
     CALL(u8),       //Responsible for calling machine code functions
     DISPLAY(u8),    //Manages the display
@@ -20,7 +20,7 @@ pub enum OpCodeType{
 }
 
 ///Specific op code identity
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub enum OpCodeIdentity{
     CallMach,           //Call machine code routines
     ClrDisp,            //Clear display
@@ -59,7 +59,7 @@ pub enum OpCodeIdentity{
     LoadRegsFromMemR,   //Load V0-reg from mem from addr const
 }
 ///Holds an op code and metadata for it
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub struct OpCode {
     pub oc_type:OpCodeType,
     pub oc_id:OpCodeIdentity,
