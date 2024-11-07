@@ -1,7 +1,7 @@
 use core::panic;
 use std::{fs, vec};
 ///Type of operation that code represents
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub enum OpCodeType{
     CALL(u8),       //Responsible for calling machine code functions
     DISPLAY(u8),    //Manages the display
@@ -20,7 +20,7 @@ pub enum OpCodeType{
 }
 
 ///Specific op code identity
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub enum OpCodeIdentity{
     CallMach,           //Call machine code routines
     ClrDisp,            //Clear display
@@ -59,12 +59,121 @@ pub enum OpCodeIdentity{
     LoadRegsFromMemR,   //Load V0-reg from mem from addr const
 }
 ///Holds an op code and metadata for it
-#[derive( Debug, PartialEq, Eq )]
+#[derive( Debug, PartialEq, Eq, Copy, Clone )]
 pub struct OpCode {
     pub oc_type:OpCodeType,
     pub oc_id:OpCodeIdentity,
     pub op_code:u16
 }
+
+pub enum DataType {
+    NNN {
+        address: u16,
+    },
+    XNN {
+        x: u8,
+        constant: u8,
+    },
+    XYN {
+        x: u8,
+        y: u8,
+        constant: u8,
+    },
+    XY {
+        x: u8,
+        y: u8,
+    },
+    X {
+        x: u8,
+    },
+    None,
+}
+
+impl DataType {
+    fn nnn(data: u16) -> Self {
+        DataType::NNN {
+            address: data & 0x0FFF,
+        }
+    }
+
+    fn xnn(data: u16) -> Self {
+        DataType::XNN {
+            x: ((data & 0x0F00) >> 8) as u8,
+            constant: (data & 0x00FF) as u8,
+        }
+    }
+
+    fn xyn(data: u16) -> Self {
+        DataType::XYN {
+            x: ((data & 0x0F00) >> 8) as u8,
+            y: ((data & 0x00F0) >> 4) as u8,
+            constant: (data & 0x000F) as u8,
+        }
+    }
+
+    fn xy(data: u16) -> Self {
+        DataType::XY {
+            x: ((data & 0x0F00) >> 8) as u8,
+            y: ((data & 0x00F0) >> 4) as u8,
+        }
+    }
+
+    fn x(data: u16) -> Self {
+        DataType::X {
+            x: ((data & 0x0F00) >> 8) as u8,
+        }
+    }
+
+    fn none(_data: u16) -> Self {
+        DataType::None
+    }
+
+}
+
+impl OpCode {
+    pub fn get_data(&self) -> DataType {
+        let f = match self.oc_id {
+            OpCodeIdentity::CallMach => DataType::nnn,
+            OpCodeIdentity::ClrDisp => DataType::none,
+            OpCodeIdentity::RetSub => DataType::none,
+            OpCodeIdentity::JumpAddr => DataType::nnn,
+            OpCodeIdentity::CallSub => DataType::nnn,
+            OpCodeIdentity::SkipEqRC => DataType::xnn,
+            OpCodeIdentity::SkipNqRC => DataType::xnn,
+            OpCodeIdentity::SkipEqRR => DataType::xy,
+            OpCodeIdentity::SetRC => DataType::xnn,
+            OpCodeIdentity::AddNcRC => DataType::xnn,
+            OpCodeIdentity::SetRR => DataType::xy,
+            OpCodeIdentity::OrRR => DataType::xy,
+            OpCodeIdentity::AndRR => DataType::xy,
+            OpCodeIdentity::XorRR => DataType::xy,
+            OpCodeIdentity::AddRR => DataType::xy,
+            OpCodeIdentity::SubRRR => DataType::xy,
+            OpCodeIdentity::RshiftR => DataType::xy,
+            OpCodeIdentity::SubLRR => DataType::xy,
+            OpCodeIdentity::LshiftR => DataType::xy,
+            OpCodeIdentity::SkipNqRR => DataType::xy,
+            OpCodeIdentity::SetAddrRegC => DataType::nnn,
+            OpCodeIdentity::JumpAddrCR => DataType::nnn,
+            OpCodeIdentity::RandRC => DataType::xnn,
+            OpCodeIdentity::DrawDispRRC => DataType::xyn,
+            OpCodeIdentity::SkipKeyPressedR => DataType::x,
+            OpCodeIdentity::SkipNKeyPressedR => DataType::x,
+            OpCodeIdentity::GetDelayR => DataType::x,
+            OpCodeIdentity::AwaitGetKeyDownR => DataType::x,
+            OpCodeIdentity::SetDelayR => DataType::x,
+            OpCodeIdentity::SetSoundR => DataType::x,
+            OpCodeIdentity::AddAddrRegR => DataType::x,
+            OpCodeIdentity::SetAddrRegSpriteR => DataType::x,
+            OpCodeIdentity::SetBcdR => DataType::x,
+            OpCodeIdentity::DumpRegsToMemR => DataType::x,
+            OpCodeIdentity::LoadRegsFromMemR => DataType::x,
+        };
+        f(self.op_code)
+    }
+
+}
+
 fn check_op_code(op_code:&String)->bool{
    if (*op_code).len()!=4{
         return false;
@@ -357,16 +466,14 @@ fn parse_oc(op_code:String)->OpCode{
         };
         oc_val|=symb_val<<(4*(3-i));
     }
-    println!("{:#x}",oc_val);
     return OpCode { oc_type: get_oc_type(oc_val), oc_id:get_oc_id(oc_val), op_code: oc_val };
 }
-pub fn parse_file(fp:String)->Vec<OpCode>{
+pub fn parse_file(fp: &str)->Vec<OpCode>{
     let contents=fs::read_to_string(fp).expect("Error");
     let code_lines=contents.lines();
     let mut lns:Vec<OpCode>=Vec::new();
     for line in code_lines{
         lns.push(parse_oc(line.to_string()));
-        println!("{}\n",line);
     }
     return lns;
 }
@@ -375,7 +482,6 @@ pub fn parse_text(text:String)->Vec<OpCode>{
     let mut lns:Vec<OpCode>=Vec::new();
     for line in code_lines{
         lns.push(parse_oc(line.to_string()));
-        println!("{}\n",line);
     }
     return lns;
 }
