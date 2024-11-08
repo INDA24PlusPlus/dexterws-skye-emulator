@@ -331,6 +331,13 @@ impl Chip8 {
     pub fn dump_clock(&self) -> (u8, u8) {
         (self.timer, self.sound_timer)
     }
+    pub fn dump_pc(&self) -> u16 {
+        self.pc
+    }
+    
+    pub fn dump_program(&self) -> &[OpCode] {
+        &self.program
+    }
 
     pub fn cycle(&mut self) -> Option<(Option<&[u8]>, bool)> {
         self.vram_changed = false;

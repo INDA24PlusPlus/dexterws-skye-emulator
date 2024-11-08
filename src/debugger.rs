@@ -1,4 +1,4 @@
-use crate::cpu::Stack;
+use crate::{cpu::Stack, parser::OpCode};
 
 
 pub struct Debugger {
@@ -7,6 +7,7 @@ pub struct Debugger {
 
 pub struct DebugLocations {
     pub reg_locations: (usize, usize),
+    pub code_locations: (usize, usize),
     pub large_reg_location: (usize, usize),
     pub stack_location: (usize, usize),
     pub clock_location: (usize, usize),
@@ -47,6 +48,24 @@ impl Debugger {
             }
             print!("{:#05X} ", stack.data[i as usize]);
         }
+    }
+    
+    pub fn print_codes(&self, program:&[OpCode], pc:u16){
+        let prog_loc = self.locations.code_locations;
+        let disp_start = (pc/40)*40;
+        print!("\x1b[{};{}H Program:", prog_loc.1, prog_loc.0);
+        for n in 0..40{
+            print!("\x1b[{};{}H                  ",prog_loc.1+1+n as usize,prog_loc.0);
+            if disp_start+n<program.len() as u16{
+                let mut point=" ";
+                if disp_start+n==pc{
+                    point=">";
+                }
+                print!("\x1b[{};{}H{}{:#02X}:{:#04X}",prog_loc.1+1+n as usize,prog_loc.0,point,pc,program[(disp_start+n) as usize].op_code);
+            }
+
+        }
+        
     }
 
     pub fn print_clock(&self, clocks: (u8, u8)) {

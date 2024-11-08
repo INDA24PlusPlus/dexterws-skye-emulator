@@ -13,6 +13,7 @@ fn main() {
         large_reg_location: (WIDTH + 2, 18),
         stack_location: (WIDTH + 20, 1),
         clock_location: (WIDTH + 40, 1),
+        code_locations: (WIDTH + 55, 1),
     };
     let debugger = Debugger::new(debug_locations);
     // Clear screen from clutter
@@ -34,6 +35,7 @@ fn main() {
         debugger.print_registers(&registers, large_reg);
         debugger.print_stack(&stack);
         debugger.print_clock(cpu.dump_clock());
+        debugger.print_codes(cpu.dump_program(),cpu.dump_pc());
         std::thread::sleep(std::time::Duration::from_millis(SLEEP_TIME));
     }
 }
