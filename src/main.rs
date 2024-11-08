@@ -1,7 +1,7 @@
 
 use dexterws_skye_emulator::{cpu::Chip8, debugger::{DebugLocations, Debugger}, display::{Display, WIDTH}};
 
-const CLOCK_CYCLE: u64 = 500;
+const CLOCK_CYCLE: u64 = 10;
 const SLEEP_TIME: u64 = 1000 / CLOCK_CYCLE;
 
 fn main() {
