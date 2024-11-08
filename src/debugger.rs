@@ -52,10 +52,11 @@ impl Debugger {
     
     pub fn print_codes(&self, program:&[OpCode], pc:u16){
         let prog_loc = self.locations.code_locations;
-        let disp_start = (pc/40)*40;
+        let list_len=if 30>program.len()as u16 {program.len() as u16} else {30};
+        let disp_start = (pc/list_len)*list_len;
         print!("\x1b[{};{}H Program:", prog_loc.1, prog_loc.0);
-        for n in 0..40{
-            print!("\x1b[{};{}H                  ",prog_loc.1+1+n as usize,prog_loc.0);
+        for n in 0..list_len{
+            print!("\x1b[{};{}H {:#02X}:                  ",prog_loc.1+1+n as usize,prog_loc.0,pc);
             if disp_start+n<program.len() as u16{
                 let mut point=" ";
                 if disp_start+n==pc{
